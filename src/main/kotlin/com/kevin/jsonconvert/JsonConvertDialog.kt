@@ -12,12 +12,26 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.*
 import java.awt.Dimension
 import javax.swing.JComponent
+import javax.swing.JLabel
 import javax.swing.JRadioButton
+import javax.swing.SwingConstants
 
 class JsonConvertDialog(val project: Project?, defaultLang: ModelLanguage = ModelLanguage.ARKTS) : DialogWrapper(project) {
 
     val config = EtsConvertConfig.load(project, defaultLang)
     private lateinit var fileNameTextField: Cell<JBTextField>
+
+    // 固定标签列宽度，避免不同语言下可见标签宽度不同导致字段输入框位置偏移
+    private companion object {
+        const val FIXED_LABEL_WIDTH = 80
+    }
+
+    private fun fixedLabel(text: String): JLabel {
+        val label = JLabel(text)
+        label.horizontalAlignment = SwingConstants.LEFT
+        label.preferredSize = Dimension(FIXED_LABEL_WIDTH, label.preferredSize.height)
+        return label
+    }
 
     private val jsonEditorField = object : LanguageTextField(JsonLanguage.INSTANCE, project, "", false) {
         override fun createEditor(): EditorEx {
@@ -66,7 +80,7 @@ class JsonConvertDialog(val project: Project?, defaultLang: ModelLanguage = Mode
 
             // 3. 配置项区
             group("Options") {
-                row("Model Name:") {
+                row(fixedLabel("Model Name:")) {
                     textField()
                         .bindText(config::modelName)
                         .align(AlignX.FILL)
@@ -75,12 +89,12 @@ class JsonConvertDialog(val project: Project?, defaultLang: ModelLanguage = Mode
                                 fileNameTextField.component.text = it.text
                             }
                         }
-                }
+                }.topGap(TopGap.NONE)
 
                 // --- ArkTS 专属配置 ---
                 lateinit var classRadio: Cell<JRadioButton>
                 buttonsGroup {
-                    row("Type:") {
+                    row(fixedLabel("Type:")) {
                         radioButton("interface", false)
                         classRadio = radioButton("class", true)
                     }
@@ -88,17 +102,17 @@ class JsonConvertDialog(val project: Project?, defaultLang: ModelLanguage = Mode
                  .visibleIf(arktsRb.selected)
 
                 row {
-                    checkBox("Add ? (optional fields)")
+                    checkBox("Nullable Types (add ?)")
                         .bindSelected(config::useOptionalFields)
                         .enabledIf(classRadio.selected)
                         .gap(RightGap.SMALL)
-                    checkBox("Add @ObservedV2 and @Trace").bindSelected(config::useObservedV2).enabledIf(classRadio.selected)
-                    checkBox("Add Default Values").bindSelected(config::addDefaultValues).enabledIf(classRadio.selected)
+                    checkBox("@ObservedV2 and @Trace").bindSelected(config::useObservedV2).enabledIf(classRadio.selected)
+                    checkBox("Default Values").bindSelected(config::addDefaultValues).enabledIf(classRadio.selected)
                 }.visibleIf(arktsRb.selected)
 
                 // --- Kotlin 专属配置 ---
                 buttonsGroup {
-                    row("Annotations:") {
+                    row(fixedLabel("Annotations:")) {
                         radioButton("None", KotlinAnnotationType.NONE)
                         radioButton("Gson @SerializedName", KotlinAnnotationType.GSON)
                         radioButton("Kotlinx @Serializable (class only)", KotlinAnnotationType.KOTLINX_BASIC)
@@ -128,7 +142,7 @@ class JsonConvertDialog(val project: Project?, defaultLang: ModelLanguage = Mode
 
                 // --- 通用输出配置 ---
                 buttonsGroup {
-                    row("Output To:") {
+                    row(fixedLabel("Output To:")) {
                         radioButton("New File", FileNameMode.MANUAL)
                         radioButton("Current File", FileNameMode.CURRENT_FILE)
                     }
@@ -136,14 +150,14 @@ class JsonConvertDialog(val project: Project?, defaultLang: ModelLanguage = Mode
                     { if (config.fileNameMode == FileNameMode.CURRENT_FILE) FileNameMode.CURRENT_FILE else FileNameMode.MANUAL },
                     { config.fileNameMode = it })
 
-                row("File Name:") {
+                row(fixedLabel("File Name:")) {
                     fileNameTextField = textField().bindText(config::manualFileName).align(AlignX.FILL)
                 }
 
                 row {
                     checkBox("Remember Options").bindSelected(config::rememberOptions)
                 }
-            }
+            }.topGap(TopGap.NONE)
         }.apply { preferredSize = Dimension(700, 600) }
     }
 
