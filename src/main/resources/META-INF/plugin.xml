@@ -26,10 +26,10 @@
     </extensions>
     <actions>
         <action
-                id="com.kevin.jsonconvert.JsonToEtsAction"
-                class="com.kevin.jsonconvert.JsonToEtsAction"
-                text="JSON to ArkTS Model"
-                description="Convert JSON to HarmonyOS ArkTS Model">
+                id="com.kevin.jsonconvert.JsonToModelAction"
+                class="com.kevin.jsonconvert.JsonToModelAction"
+                text="JSONConvertToModel"
+                description="Convert JSON to ArkTS/Kotlin/Java Model">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="shift alt J"/>

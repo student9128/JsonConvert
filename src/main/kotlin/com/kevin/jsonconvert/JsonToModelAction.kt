@@ -12,7 +12,7 @@ import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.ui.Messages
 import org.jetbrains.annotations.NotNull
 
-class JsonToEtsAction : AnAction() {
+class JsonToModelAction : AnAction() {
 
     override fun actionPerformed(@NotNull event: AnActionEvent) {
         val project = event.project ?: return
@@ -27,7 +27,7 @@ class JsonToEtsAction : AnAction() {
             else -> ModelLanguage.ARKTS
         }
 
-        val dialog = EtsConvertDialog(project, defaultLang)
+        val dialog = JsonConvertDialog(project, defaultLang)
         if (dialog.showAndGet()) {
             val config = dialog.config
             val code = generateCode(config)

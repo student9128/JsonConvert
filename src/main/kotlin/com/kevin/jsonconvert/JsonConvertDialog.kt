@@ -14,7 +14,7 @@ import java.awt.Dimension
 import javax.swing.JComponent
 import javax.swing.JRadioButton
 
-class EtsConvertDialog(val project: Project?, defaultLang: ModelLanguage = ModelLanguage.ARKTS) : DialogWrapper(project) {
+class JsonConvertDialog(val project: Project?, defaultLang: ModelLanguage = ModelLanguage.ARKTS) : DialogWrapper(project) {
 
     val config = EtsConvertConfig.load(project, defaultLang)
     private lateinit var fileNameTextField: Cell<JBTextField>
