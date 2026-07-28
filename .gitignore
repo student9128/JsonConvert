@@ -1,0 +1,59 @@
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+.kotlin
+
+### IntelliJ IDEA ###
+.idea/
+.idea/modules.xml
+.idea/jarRepositories.xml
+.idea/compiler.xml
+.idea/libraries/
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+
+### IntelliJ Platform Plugin Development ###
+# 沙盒运行环境（存放测试用的 IDEA 实例和插件数据，每次运行 runIde 会自动生成）
+/build/idea-sandbox/
+/intellij-sandbox/
+
+# Gradle 插件下载的平台依赖缓存
+.intellijPlatform/
+
+# 插件打包后的 zip 产物
+/build/distributions/
+/build/libs/
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store
+
+.run/
