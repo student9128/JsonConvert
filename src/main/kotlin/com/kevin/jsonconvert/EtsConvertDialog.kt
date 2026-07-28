@@ -101,13 +101,18 @@ class EtsConvertDialog(val project: Project?, defaultLang: ModelLanguage = Model
                     row("Annotations:") {
                         radioButton("None", KotlinAnnotationType.NONE)
                         radioButton("Gson @SerializedName", KotlinAnnotationType.GSON)
-                        radioButton("Kotlinx Serializable", KotlinAnnotationType.KOTLINX)
+                        radioButton("Kotlinx @Serializable (class only)", KotlinAnnotationType.KOTLINX_BASIC)
+                        radioButton("Kotlinx @Serializable + @SerialName", KotlinAnnotationType.KOTLINX_ADVANCED)
                     }
                 }.bind({ config.kotlinAnnotation }, { config.kotlinAnnotation = it })
                  .visibleIf(kotlinRb.selected)
 
                 row {
                     checkBox("Auto Import").bindSelected(config::kotlinAutoImport)
+                }.visibleIf(kotlinRb.selected)
+                row {
+                    checkBox("Nullable Types (add ?)").bindSelected(config::kotlinNullable)
+                    checkBox("Default Values").bindSelected(config::kotlinDefaultValues)
                 }.visibleIf(kotlinRb.selected)
 
                 // --- Java 专属配置 ---
@@ -116,6 +121,9 @@ class EtsConvertDialog(val project: Project?, defaultLang: ModelLanguage = Model
                 }.visibleIf(javaRb.selected)
                 row {
                     checkBox("Auto Import").bindSelected(config::javaAutoImport)
+                }.visibleIf(javaRb.selected)
+                row {
+                    checkBox("Generate get/set Methods").bindSelected(config::javaUseGetSet)
                 }.visibleIf(javaRb.selected)
 
                 // --- 通用输出配置 ---

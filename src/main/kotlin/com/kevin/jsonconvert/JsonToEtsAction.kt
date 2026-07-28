@@ -156,8 +156,15 @@ class JsonToEtsAction : AnAction() {
             val generatedModelNames = mutableSetOf<String>()
 
             if (config.kotlinAutoImport) {
-                if (config.kotlinAnnotation == KotlinAnnotationType.GSON) sb.append("import com.google.gson.annotations.SerializedName\n")
-                if (config.kotlinAnnotation == KotlinAnnotationType.KOTLINX) sb.append("import kotlinx.serialization.Serializable\nimport kotlinx.serialization.SerialName\n")
+                when (config.kotlinAnnotation) {
+                    KotlinAnnotationType.GSON ->
+                        sb.append("import com.google.gson.annotations.SerializedName\n")
+                    KotlinAnnotationType.KOTLINX_BASIC ->
+                        sb.append("import kotlinx.serialization.Serializable\n")
+                    KotlinAnnotationType.KOTLINX_ADVANCED ->
+                        sb.append("import kotlinx.serialization.Serializable\nimport kotlinx.serialization.SerialName\n")
+                    else -> {}
+                }
                 sb.append("\n")
             }
 
@@ -185,7 +192,8 @@ class JsonToEtsAction : AnAction() {
                     else -> null
                 } ?: return
 
-                if (config.kotlinAnnotation == KotlinAnnotationType.KOTLINX) sb.append("@Serializable\n")
+                if (config.kotlinAnnotation == KotlinAnnotationType.KOTLINX_BASIC
+                    || config.kotlinAnnotation == KotlinAnnotationType.KOTLINX_ADVANCED) sb.append("@Serializable\n")
                 sb.append("data class $className(\n")
 
                 val nestedTasks = mutableListOf<Pair<String, JsonElement>>()
@@ -196,9 +204,9 @@ class JsonToEtsAction : AnAction() {
                     val value = entry.value
 
                     if (config.kotlinAnnotation == KotlinAnnotationType.GSON) sb.append("    @SerializedName(\"$key\")\n")
-                    if (config.kotlinAnnotation == KotlinAnnotationType.KOTLINX) sb.append("    @SerialName(\"$key\")\n")
+                    if (config.kotlinAnnotation == KotlinAnnotationType.KOTLINX_ADVANCED) sb.append("    @SerialName(\"$key\")\n")
 
-                    var typeName = "Any?"
+                    var typeName = "Any"
                     var defaultValue = "null"
 
                     when {
@@ -229,7 +237,12 @@ class JsonToEtsAction : AnAction() {
                         }
                     }
 
-                    sb.append("    val $key: $typeName = $defaultValue")
+                    // 可空类型：所有字段加 ?，默认值统一为 null
+                    val finalType = if (config.kotlinNullable) "$typeName?" else typeName
+                    val finalDefault = if (config.kotlinNullable) "null" else defaultValue
+
+                    sb.append("    val $key: $finalType")
+                    if (config.kotlinDefaultValues) sb.append(" = $finalDefault")
                     if (index < entries.size - 1) sb.append(",")
                     sb.append("\n")
                 }
@@ -281,6 +294,7 @@ class JsonToEtsAction : AnAction() {
 
                 sb.append("public class $className {\n")
                 val nestedTasks = mutableListOf<Pair<String, JsonElement>>()
+                val fields = mutableListOf<Pair<String, String>>() // key -> typeName
 
                 obj.entrySet().forEach { entry ->
                     val key = entry.key
@@ -313,7 +327,29 @@ class JsonToEtsAction : AnAction() {
                             }
                         }
                     }
-                    sb.append("    public $typeName $key;\n")
+                    fields.add(key to typeName)
+                }
+
+                // 字段声明
+                if (config.javaUseGetSet) {
+                    fields.forEach { (key, typeName) ->
+                        sb.append("    private $typeName $key;\n")
+                    }
+                    sb.append("\n")
+                    // getter / setter
+                    fields.forEach { (key, typeName) ->
+                        val cap = key.replaceFirstChar { it.uppercase() }
+                        sb.append("    public $typeName get$cap() {\n")
+                        sb.append("        return $key;\n")
+                        sb.append("    }\n\n")
+                        sb.append("    public void set$cap($typeName $key) {\n")
+                        sb.append("        this.$key = $key;\n")
+                        sb.append("    }\n\n")
+                    }
+                } else {
+                    fields.forEach { (key, typeName) ->
+                        sb.append("    public $typeName $key;\n")
+                    }
                 }
                 sb.append("}\n\n")
                 nestedTasks.forEach { (subName, subEl) -> generateModel(subName, subEl) }
