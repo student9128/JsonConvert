@@ -12,10 +12,11 @@ import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.*
 import java.awt.Dimension
 import javax.swing.JComponent
+import javax.swing.JRadioButton
 
-class EtsConvertDialog(val project: Project?) : DialogWrapper(project) {
+class EtsConvertDialog(val project: Project?, defaultLang: ModelLanguage = ModelLanguage.ARKTS) : DialogWrapper(project) {
 
-    val config = EtsConvertConfig.load(project)
+    val config = EtsConvertConfig.load(project, defaultLang)
     private lateinit var fileNameTextField: Cell<JBTextField>
 
     private val jsonEditorField = object : LanguageTextField(JsonLanguage.INSTANCE, project, "", false) {
@@ -35,7 +36,7 @@ class EtsConvertDialog(val project: Project?) : DialogWrapper(project) {
     }
 
     init {
-        title = "JSON to ArkTS Model"
+        title = "JSON to Model Generator"
         config.manualFileName = config.modelName
         setResizable(true)
         init()
@@ -46,10 +47,24 @@ class EtsConvertDialog(val project: Project?) : DialogWrapper(project) {
             row {
                 cell(jsonEditorField)
                     .align(Align.FILL)
-                    .label("JSON Input:", LabelPosition.TOP)
+                    .label("JSON Content:", LabelPosition.TOP)
                     .focused()
             }.resizableRow()
 
+            lateinit var arktsRb: Cell<JRadioButton>
+            lateinit var kotlinRb: Cell<JRadioButton>
+            lateinit var javaRb: Cell<JRadioButton>
+
+            // 2. 语言选择
+            buttonsGroup {
+                row("Target Language:") {
+                    arktsRb = radioButton("ArkTS", ModelLanguage.ARKTS)
+                    kotlinRb = radioButton("Kotlin", ModelLanguage.KOTLIN)
+                    javaRb = radioButton("Java", ModelLanguage.JAVA)
+                }
+            }.bind({ config.targetLanguage }, { config.targetLanguage = it })
+
+            // 3. 配置项区
             group("Options") {
                 row("Model Name:") {
                     textField()
@@ -62,34 +77,48 @@ class EtsConvertDialog(val project: Project?) : DialogWrapper(project) {
                         }
                 }
 
-                lateinit var classRadio: Cell<javax.swing.JRadioButton>
+                // --- ArkTS 专属配置 ---
+                lateinit var classRadio: Cell<JRadioButton>
                 buttonsGroup {
-                    row("Generate Type:") {
+                    row("Type:") {
                         radioButton("interface", false)
                         classRadio = radioButton("class", true)
-
                     }
                 }.bind({ config.generateAsClass }, { config.generateAsClass = it })
+                 .visibleIf(arktsRb.selected)
 
                 row {
                     checkBox("Add ? (optional fields)")
                         .bindSelected(config::useOptionalFields)
                         .enabledIf(classRadio.selected)
                         .gap(RightGap.SMALL)
-                    checkBox("Add @ObservedV2 and @Trace")
-                        .bindSelected(config::useObservedV2)
-                        .enabledIf(classRadio.selected)
-                        .onChanged {
-                            if (it.isSelected) {
-                                config.addDefaultValues = true
-                            }
-                        }
+                    checkBox("Add @ObservedV2 and @Trace").bindSelected(config::useObservedV2).enabledIf(classRadio.selected)
+                    checkBox("Add Default Values").bindSelected(config::addDefaultValues).enabledIf(classRadio.selected)
+                }.visibleIf(arktsRb.selected)
 
-                    checkBox("Add Default Values")
-                        .bindSelected(config::addDefaultValues)
-                        .enabledIf(classRadio.selected)
-                }
+                // --- Kotlin 专属配置 ---
+                buttonsGroup {
+                    row("Annotations:") {
+                        radioButton("None", KotlinAnnotationType.NONE)
+                        radioButton("Gson @SerializedName", KotlinAnnotationType.GSON)
+                        radioButton("Kotlinx Serializable", KotlinAnnotationType.KOTLINX)
+                    }
+                }.bind({ config.kotlinAnnotation }, { config.kotlinAnnotation = it })
+                 .visibleIf(kotlinRb.selected)
 
+                row {
+                    checkBox("Auto Import").bindSelected(config::kotlinAutoImport)
+                }.visibleIf(kotlinRb.selected)
+
+                // --- Java 专属配置 ---
+                row {
+                    checkBox("Add Gson @SerializedName").bindSelected(config::javaUseSerializedName)
+                }.visibleIf(javaRb.selected)
+                row {
+                    checkBox("Auto Import").bindSelected(config::javaAutoImport)
+                }.visibleIf(javaRb.selected)
+
+                // --- 通用输出配置 ---
                 buttonsGroup {
                     row("Output To:") {
                         radioButton("New File", FileNameMode.MANUAL)
@@ -100,24 +129,14 @@ class EtsConvertDialog(val project: Project?) : DialogWrapper(project) {
                     { config.fileNameMode = it })
 
                 row("File Name:") {
-                    fileNameTextField = textField()
-                        .bindText(config::manualFileName)
-                        .align(AlignX.FILL)
+                    fileNameTextField = textField().bindText(config::manualFileName).align(AlignX.FILL)
                 }
 
-                // 记忆功能选项
                 row {
-                    checkBox("Remember Options")
-                        .bindSelected(config::rememberOptions)
+                    checkBox("Remember Options").bindSelected(config::rememberOptions)
                 }
             }
-        }.apply {
-            preferredSize = Dimension(800, 600)
-        }
-    }
-
-    override fun getPreferredFocusedComponent(): JComponent {
-        return jsonEditorField
+        }.apply { preferredSize = Dimension(700, 600) }
     }
 
     override fun createActions(): Array<javax.swing.Action> {
@@ -133,6 +152,10 @@ class EtsConvertDialog(val project: Project?) : DialogWrapper(project) {
         }
         return arrayOf(formatAction)
     }
+
+    override fun getPreferredFocusedComponent(): JComponent = jsonEditorField
+
+
 
     private fun formatJsonText(): Boolean {
         val rawText = jsonEditorField.text.trim()

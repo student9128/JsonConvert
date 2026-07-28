@@ -32,6 +32,7 @@
                 description="Convert JSON to HarmonyOS ArkTS Model">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="shift alt J"/>
         </action>
     </actions>
 </idea-plugin>

@@ -7,7 +7,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.command.WriteCommandAction
-import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.guessProjectDir
 import com.intellij.openapi.ui.Messages
@@ -18,21 +17,42 @@ class JsonToEtsAction : AnAction() {
     override fun actionPerformed(@NotNull event: AnActionEvent) {
         val project = event.project ?: return
 
-        val dialog = EtsConvertDialog(project)
+        // 1. 检测当前文件类型
+        val virtualFile = event.getData(CommonDataKeys.VIRTUAL_FILE)
+        val extension = virtualFile?.extension?.lowercase() ?: ""
+        val defaultLang = when (extension) {
+            "kt" -> ModelLanguage.KOTLIN
+            "java" -> ModelLanguage.JAVA
+            "ets", "ts" -> ModelLanguage.ARKTS
+            else -> ModelLanguage.ARKTS
+        }
+
+        val dialog = EtsConvertDialog(project, defaultLang)
         if (dialog.showAndGet()) {
             val config = dialog.config
-            val etsCode = parseJsonToArkTS(config)
+            val code = generateCode(config)
+
+            val finalExt = when (config.targetLanguage) {
+                ModelLanguage.ARKTS -> "ets"
+                ModelLanguage.KOTLIN -> "kt"
+                ModelLanguage.JAVA -> "java"
+            }
 
             if (config.fileNameMode == FileNameMode.CURRENT_FILE) {
-                insertIntoCurrentEditor(project, event, etsCode)
+                insertIntoCurrentEditor(project, event, code)
             } else {
-                val fileName = if (config.manualFileName.endsWith(".ets")) {
-                    config.manualFileName
-                } else {
-                    "${config.manualFileName}.ets"
-                }
-                createEtsFile(project, event, fileName, etsCode)
+                val fileName = if (config.manualFileName.endsWith(".$finalExt"))
+                    config.manualFileName else "${config.manualFileName}.$finalExt"
+                createFile(project, event, fileName, code, finalExt)
             }
+        }
+    }
+
+    private fun generateCode(config: EtsConvertConfig): String {
+        return when (config.targetLanguage) {
+            ModelLanguage.ARKTS -> parseJsonToArkTS(config)
+            ModelLanguage.KOTLIN -> parseJsonToKotlin(config)
+            ModelLanguage.JAVA -> parseJsonToJava(config)
         }
     }
 
@@ -46,7 +66,6 @@ class JsonToEtsAction : AnAction() {
             val actualUseObservedV2 = if (config.generateAsClass) config.useObservedV2 else false
             val actualAddDefault = if (config.generateAsClass) config.addDefaultValues else false
 
-            // 获取不冲突的模型名称
             fun getSafeModelName(baseName: String): String {
                 var candidate = baseName.replaceFirstChar { it.uppercase() } + "Model"
                 if (candidate == config.modelName && generatedModelNames.isNotEmpty()) {
@@ -120,8 +139,6 @@ class JsonToEtsAction : AnAction() {
                     sb.append(";\n")
                 }
                 sb.append("}\n\n")
-
-                // 递归生成子类
                 nestedTasks.forEach { (subName, subEl) -> generateModel(subName, subEl) }
             }
 
@@ -132,12 +149,189 @@ class JsonToEtsAction : AnAction() {
         }
     }
 
-    private fun createEtsFile(project: Project, event: AnActionEvent, fileName: String, content: String) {
+    private fun parseJsonToKotlin(config: EtsConvertConfig): String {
+        try {
+            val rootElement = JsonParser.parseString(config.jsonContent)
+            val sb = StringBuilder()
+            val generatedModelNames = mutableSetOf<String>()
+
+            if (config.kotlinAutoImport) {
+                if (config.kotlinAnnotation == KotlinAnnotationType.GSON) sb.append("import com.google.gson.annotations.SerializedName\n")
+                if (config.kotlinAnnotation == KotlinAnnotationType.KOTLINX) sb.append("import kotlinx.serialization.Serializable\nimport kotlinx.serialization.SerialName\n")
+                sb.append("\n")
+            }
+
+            fun getSafeModelName(baseName: String): String {
+                var candidate = baseName.replaceFirstChar { it.uppercase() } + "Model"
+                if (candidate == config.modelName && generatedModelNames.isNotEmpty()) {
+                    candidate = baseName.replaceFirstChar { it.uppercase() } + "InfoModel"
+                }
+                var finalName = candidate
+                var count = 1
+                while (generatedModelNames.contains(finalName)) {
+                    finalName = candidate.replace("Model", "") + "${count++}Model"
+                }
+                return finalName
+            }
+
+            fun generateModel(className: String, element: JsonElement) {
+                if (generatedModelNames.contains(className)) return
+                generatedModelNames.add(className)
+
+                val obj = when {
+                    element.isJsonObject -> element.asJsonObject
+                    element.isJsonArray && element.asJsonArray.size() > 0 && element.asJsonArray[0].isJsonObject ->
+                        element.asJsonArray[0].asJsonObject
+                    else -> null
+                } ?: return
+
+                if (config.kotlinAnnotation == KotlinAnnotationType.KOTLINX) sb.append("@Serializable\n")
+                sb.append("data class $className(\n")
+
+                val nestedTasks = mutableListOf<Pair<String, JsonElement>>()
+                val entries = obj.entrySet().toList()
+
+                entries.forEachIndexed { index, entry ->
+                    val key = entry.key
+                    val value = entry.value
+
+                    if (config.kotlinAnnotation == KotlinAnnotationType.GSON) sb.append("    @SerializedName(\"$key\")\n")
+                    if (config.kotlinAnnotation == KotlinAnnotationType.KOTLINX) sb.append("    @SerialName(\"$key\")\n")
+
+                    var typeName = "Any?"
+                    var defaultValue = "null"
+
+                    when {
+                        value.isJsonObject -> {
+                            typeName = getSafeModelName(key)
+                            defaultValue = "$typeName()"
+                            nestedTasks.add(typeName to value)
+                        }
+                        value.isJsonArray -> {
+                            val array = value.asJsonArray
+                            if (array.size() > 0 && array[0].isJsonObject) {
+                                val innerName = getSafeModelName(key.replace("List", "") + "Item")
+                                typeName = "List<$innerName>"
+                                defaultValue = "emptyList()"
+                                nestedTasks.add(innerName to array[0])
+                            } else {
+                                typeName = "List<Any>"
+                                defaultValue = "emptyList()"
+                            }
+                        }
+                        value.isJsonPrimitive -> {
+                            val p = value.asJsonPrimitive
+                            when {
+                                p.isNumber -> { typeName = "Double"; defaultValue = "0.0" }
+                                p.isBoolean -> { typeName = "Boolean"; defaultValue = "false" }
+                                else -> { typeName = "String"; defaultValue = "\"\"" }
+                            }
+                        }
+                    }
+
+                    sb.append("    val $key: $typeName = $defaultValue")
+                    if (index < entries.size - 1) sb.append(",")
+                    sb.append("\n")
+                }
+                sb.append(")\n\n")
+                nestedTasks.forEach { (subName, subEl) -> generateModel(subName, subEl) }
+            }
+
+            generateModel(config.modelName, rootElement)
+            return sb.toString()
+        } catch (e: Exception) {
+            return "// Parse Error: ${e.message}"
+        }
+    }
+
+    private fun parseJsonToJava(config: EtsConvertConfig): String {
+        try {
+            val rootElement = JsonParser.parseString(config.jsonContent)
+            val sb = StringBuilder()
+            val generatedModelNames = mutableSetOf<String>()
+
+            if (config.javaAutoImport) {
+                if (config.javaUseSerializedName) sb.append("import com.google.gson.annotations.SerializedName;\n")
+                sb.append("import java.util.List;\n\n")
+            }
+
+            fun getSafeModelName(baseName: String): String {
+                var candidate = baseName.replaceFirstChar { it.uppercase() } + "Model"
+                if (candidate == config.modelName && generatedModelNames.isNotEmpty()) {
+                    candidate = baseName.replaceFirstChar { it.uppercase() } + "InfoModel"
+                }
+                var finalName = candidate
+                var count = 1
+                while (generatedModelNames.contains(finalName)) {
+                    finalName = candidate.replace("Model", "") + "${count++}Model"
+                }
+                return finalName
+            }
+
+            fun generateModel(className: String, element: JsonElement) {
+                if (generatedModelNames.contains(className)) return
+                generatedModelNames.add(className)
+
+                val obj = when {
+                    element.isJsonObject -> element.asJsonObject
+                    element.isJsonArray && element.asJsonArray.size() > 0 && element.asJsonArray[0].isJsonObject ->
+                        element.asJsonArray[0].asJsonObject
+                    else -> null
+                } ?: return
+
+                sb.append("public class $className {\n")
+                val nestedTasks = mutableListOf<Pair<String, JsonElement>>()
+
+                obj.entrySet().forEach { entry ->
+                    val key = entry.key
+                    val value = entry.value
+
+                    if (config.javaUseSerializedName) sb.append("    @SerializedName(\"$key\")\n")
+
+                    var typeName = "Object"
+                    when {
+                        value.isJsonObject -> {
+                            typeName = getSafeModelName(key)
+                            nestedTasks.add(typeName to value)
+                        }
+                        value.isJsonArray -> {
+                            val array = value.asJsonArray
+                            if (array.size() > 0 && array[0].isJsonObject) {
+                                val innerName = getSafeModelName(key.replace("List", "") + "Item")
+                                typeName = "List<$innerName>"
+                                nestedTasks.add(innerName to array[0])
+                            } else {
+                                typeName = "List<Object>"
+                            }
+                        }
+                        value.isJsonPrimitive -> {
+                            val p = value.asJsonPrimitive
+                            typeName = when {
+                                p.isNumber -> "double"
+                                p.isBoolean -> "boolean"
+                                else -> "String"
+                            }
+                        }
+                    }
+                    sb.append("    public $typeName $key;\n")
+                }
+                sb.append("}\n\n")
+                nestedTasks.forEach { (subName, subEl) -> generateModel(subName, subEl) }
+            }
+
+            generateModel(config.modelName, rootElement)
+            return sb.toString()
+        } catch (e: Exception) {
+            return "// Parse Error: ${e.message}"
+        }
+    }
+
+    private fun createFile(project: Project, event: AnActionEvent, fileName: String, content: String, extension: String) {
         val selectedFile = event.getData(CommonDataKeys.VIRTUAL_FILE)
         val targetDir = if (selectedFile != null && selectedFile.isDirectory) {
             selectedFile
         } else {
-            project.guessProjectDir()
+            selectedFile?.parent ?: project.guessProjectDir()
         }
 
         if (targetDir == null) {
