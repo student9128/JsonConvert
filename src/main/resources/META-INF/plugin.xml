@@ -8,11 +8,11 @@
     <name>JsonConvert</name>
 
     <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
-    <vendor url="https://www.kevin.com">Kevin</vendor>
+    <vendor url="https://github.com/student9128/JsonConvert">Kevin</vendor>
 
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
-    <description>Convert selected JSON string into HarmonyOS ArkTS interface or class with a Kotlin UI DSL dialog.
+    <description>Convert JSON string into ArkTS/Kotlin/Java model.
     </description>
 
     <!-- Product and plugin compatibility requirements.

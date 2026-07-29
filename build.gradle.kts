@@ -1,3 +1,5 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "2.1.0"
@@ -5,7 +7,7 @@ plugins {
 }
 
 group = "com.kevin"
-version = "1.0-SNAPSHOT"
+version = "1.0.0"
 
 repositories {
     mavenCentral()
@@ -14,11 +16,10 @@ repositories {
     }
 }
 
-// Configure IntelliJ Platform Gradle Plugin
-// Read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin.html
 dependencies {
     intellijPlatform {
-        create("IC", "2025.1.4.1")
+//        create("IC", "2024.3")
+        intellijIdeaCommunity("2024.3")
         testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
 
         // Add necessary plugin dependencies for compilation here, example:
@@ -30,12 +31,29 @@ dependencies {
 intellijPlatform {
     pluginConfiguration {
         ideaVersion {
-            sinceBuild = "251"
+            sinceBuild = "243"
         }
 
         changeNotes = """
-            Initial version
+           This is a plugin for developers needing convert JSON string into ArkTS/Kotlin/Java model.
+           It can be used for all IntelliJPlatform.
+          
+           
         """.trimIndent()
+    }
+    pluginVerification {
+        ides {
+//            recommended()
+            create(
+                IntelliJPlatformType.IntellijIdeaCommunity,
+                "2024.3"
+            )
+//            select {
+//                types = listOf(IntelliJPlatformType.AndroidStudio)
+//                channels = listOf(ProductRelease.Channel.RELEASE,ProductRelease.Channel.BETA,ProductRelease.Channel.CANARY)
+//                sinceBuild = "243"
+//            }
+        }
     }
 }
 
