@@ -57,3 +57,5 @@ bin/
 .DS_Store
 
 .run/
+key/
+local.properties

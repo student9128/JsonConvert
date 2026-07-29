@@ -1,11 +1,22 @@
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import java.util.Properties
 
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "2.1.0"
     id("org.jetbrains.intellij.platform") version "2.7.1"
 }
+val localProperties = Properties()
 
+val localPropertiesFile = rootProject.file("local.properties")
+
+if (localPropertiesFile.exists()) {
+    localProperties.load(localPropertiesFile.inputStream())
+}
+val keyPassword = localProperties.getProperty("password")
+val publishToken = localProperties.getProperty(
+    "intellijPlatformPublishingToken"
+)
 group = "com.kevin"
 version = "1.0.0"
 
@@ -27,6 +38,7 @@ dependencies {
         bundledPlugin("com.intellij.modules.json")
     }
 }
+
 
 intellijPlatform {
     pluginConfiguration {
@@ -54,6 +66,17 @@ intellijPlatform {
 //                sinceBuild = "243"
 //            }
         }
+    }
+    signing{
+        certificateChainFile = layout.projectDirectory.file("key/chain.crt")
+        privateKeyFile = layout.projectDirectory.file("key/privateKey.pem")
+        password = providers.provider { keyPassword }
+//        password = providers.fileContents(
+//            layout.projectDirectory.file("key/password.txt")
+//        ).asText
+    }
+    publishing{
+        token = providers.provider { publishToken }
     }
 }
 
