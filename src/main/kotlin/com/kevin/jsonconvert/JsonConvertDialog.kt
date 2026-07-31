@@ -8,6 +8,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.LanguageTextField
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.*
 import java.awt.Dimension
@@ -68,6 +69,7 @@ class JsonConvertDialog(val project: Project?, defaultLang: ModelLanguage = Mode
             lateinit var arktsRb: Cell<JRadioButton>
             lateinit var kotlinRb: Cell<JRadioButton>
             lateinit var javaRb: Cell<JRadioButton>
+            lateinit var dartRb: Cell<JRadioButton>
 
             // 2. 语言选择
             buttonsGroup {
@@ -75,6 +77,7 @@ class JsonConvertDialog(val project: Project?, defaultLang: ModelLanguage = Mode
                     arktsRb = radioButton("ArkTS", ModelLanguage.ARKTS)
                     kotlinRb = radioButton("Kotlin", ModelLanguage.KOTLIN)
                     javaRb = radioButton("Java", ModelLanguage.JAVA)
+                    dartRb = radioButton("Dart (Flutter)", ModelLanguage.DART)
                 }
             }.bind({ config.targetLanguage }, { config.targetLanguage = it })
 
@@ -139,6 +142,74 @@ class JsonConvertDialog(val project: Project?, defaultLang: ModelLanguage = Mode
                 row {
                     checkBox("Generate get/set Methods").bindSelected(config::javaUseGetSet)
                 }.visibleIf(javaRb.selected)
+
+                // --- Dart 专属配置 ---
+                lateinit var dartFinalCb: Cell<JBCheckBox>
+                lateinit var dartNullableCb: Cell<JBCheckBox>
+                lateinit var dartDefaultCb: Cell<JBCheckBox>
+                lateinit var dartJsonSerCb: Cell<JBCheckBox>
+                lateinit var dartSimplifiedCb: Cell<JBCheckBox>
+
+                row {
+                    dartFinalCb = checkBox("Use final").bindSelected(config::dartUseFinal)
+                    dartNullableCb = checkBox("Nullable Types (add ?)").bindSelected(config::dartNullable)
+                    dartDefaultCb = checkBox("Default Values").bindSelected(config::dartDefaultValues)
+                }.visibleIf(dartRb.selected)
+                row {
+                    dartJsonSerCb = checkBox("Use json_serializable annotation (generate fromJson/toJson via code-gen)")
+                        .bindSelected(config::dartUseJsonSerializable)
+                }.visibleIf(dartRb.selected)
+                row {
+                    // 简化样式：命名构造 fromJson 直接赋值、不加 final、不强制类型转换
+                    dartSimplifiedCb = checkBox("Simplified style (no type casting, named fromJson)")
+                        .bindSelected(config::dartSimplifiedStyle)
+                }.visibleIf(dartRb.selected)
+
+                // 选项联动（参考 ArkTS interface/class 的隐藏/置灰逻辑）：
+                // 1) 勾选 json_serializable：final / Default Values 直接隐藏并清零（置灰改为不显示）；
+                //    nullable 仍可勾选（官方之外给用户多一个选择）；Simplified 置灰（始终显示，不可勾选）
+                // 2) Final 与 Simplified 互斥：任一勾选则另一不可勾选。Simplified 始终显示（置灰即可），
+                //    Final 在被互斥时隐藏（不显示）
+                val applyDartConsistency = {
+                    val jsonSer = dartJsonSerCb.component.isSelected
+                    val simplified = dartSimplifiedCb.component.isSelected
+
+                    // 互斥与清理：
+                    // - annotation 勾选：final / Default Values 清零（隐藏，不再置灰）
+                    // - simplified 与 final 互斥时以 simplified 优先（req c：simplified 勾选时 final 不可勾选/隐藏），
+                    //   因此清除 final 而非 simplified，保证用户已选的 Simplified 不被丢弃（修复重开后 Simplified 被置灰）
+                    if (jsonSer) {
+                        dartFinalCb.component.isSelected = false
+                        config.dartUseFinal = false
+                        dartDefaultCb.component.isSelected = false
+                        config.dartDefaultValues = false
+                    }
+                    val finalNow = dartFinalCb.component.isSelected
+                    if (simplified && finalNow) {
+                        dartFinalCb.component.isSelected = false
+                        config.dartUseFinal = false
+                    }
+
+                    val jsonSer2 = dartJsonSerCb.component.isSelected
+                    val finalSel2 = dartFinalCb.component.isSelected
+                    val simplified2 = dartSimplifiedCb.component.isSelected
+
+                    // Final：annotation 或 simplified 勾选时隐藏；否则显示且可选
+                    dartFinalCb.visible(!jsonSer2 && !simplified2)
+                    // Default Values：annotation 勾选时隐藏；否则显示且可选
+                    dartDefaultCb.visible(!jsonSer2)
+                    dartDefaultCb.enabled(true)
+                    // Nullable：始终显示且可选
+                    dartNullableCb.visible(true)
+                    dartNullableCb.enabled(true)
+                    // Simplified：始终显示；final 或 annotation 勾选时置灰（不可勾选）
+                    dartSimplifiedCb.visible(true)
+                    dartSimplifiedCb.enabled(!finalSel2 && !jsonSer2)
+                }
+                dartJsonSerCb.component.addActionListener { applyDartConsistency() }
+                dartFinalCb.component.addActionListener { applyDartConsistency() }
+                dartSimplifiedCb.component.addActionListener { applyDartConsistency() }
+                applyDartConsistency()
 
                 // --- 通用输出配置 ---
                 buttonsGroup {

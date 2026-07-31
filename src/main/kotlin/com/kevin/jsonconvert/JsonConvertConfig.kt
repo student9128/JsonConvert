@@ -3,7 +3,7 @@ package com.kevin.jsonconvert
 import com.intellij.ide.util.PropertiesComponent
 
 enum class ModelLanguage {
-    ARKTS, KOTLIN, JAVA
+    ARKTS, KOTLIN, JAVA, DART
 }
 
 enum class KotlinAnnotationType {
@@ -34,6 +34,13 @@ data class EtsConvertConfig(
     var kotlinNullable: Boolean = false,
     var kotlinDefaultValues: Boolean = true,
 
+    // Dart 特有
+    var dartNullable: Boolean = false,
+    var dartDefaultValues: Boolean = true,
+    var dartUseFinal: Boolean = true,
+    var dartUseJsonSerializable: Boolean = false,
+    var dartSimplifiedStyle: Boolean = false,
+
     // Java 特有
     var javaUseSerializedName: Boolean = false,
     var javaAutoImport: Boolean = true,
@@ -46,7 +53,7 @@ data class EtsConvertConfig(
             val props = PropertiesComponent.getInstance()
             val config = EtsConvertConfig()
 
-            // 默认语言根据当前文件识别
+            // 默认语言根据当前文件识别；remember 时优先使用上次保存的语言
             config.targetLanguage = defaultLang
 
             // 始终读取 rememberOptions，确保与存储值一致（修复之前跳过 if 导致该值恒为 true 的问题）
@@ -54,6 +61,7 @@ data class EtsConvertConfig(
             config.rememberOptions = remember
 
             if (remember) {
+                config.targetLanguage = loadTargetLanguage(props, defaultLang)
                 config.generateAsClass = props.getBoolean(PREFIX + "generateAsClass", true)
                 config.useOptionalFields = props.getBoolean(PREFIX + "useOptionalFields", false)
                 config.useObservedV2 = props.getBoolean(PREFIX + "useObservedV2", false)
@@ -63,6 +71,12 @@ data class EtsConvertConfig(
                 config.kotlinAutoImport = props.getBoolean(PREFIX + "kotlinAutoImport", true)
                 config.kotlinNullable = props.getBoolean(PREFIX + "kotlinNullable", false)
                 config.kotlinDefaultValues = props.getBoolean(PREFIX + "kotlinDefaultValues", true)
+
+                config.dartNullable = props.getBoolean(PREFIX + "dartNullable", false)
+                config.dartDefaultValues = props.getBoolean(PREFIX + "dartDefaultValues", true)
+                config.dartUseFinal = props.getBoolean(PREFIX + "dartUseFinal", true)
+                config.dartUseJsonSerializable = props.getBoolean(PREFIX + "dartUseJsonSerializable", false)
+                config.dartSimplifiedStyle = props.getBoolean(PREFIX + "dartSimplifiedStyle", false)
 
                 config.javaUseSerializedName = props.getBoolean(PREFIX + "javaUseSerializedName", false)
                 config.javaAutoImport = props.getBoolean(PREFIX + "javaAutoImport", true)
@@ -93,10 +107,20 @@ data class EtsConvertConfig(
             }
         }
 
+        private fun loadTargetLanguage(props: PropertiesComponent, defaultLang: ModelLanguage): ModelLanguage {
+            val raw = props.getValue(PREFIX + "targetLanguage") ?: return defaultLang
+            return try {
+                ModelLanguage.valueOf(raw)
+            } catch (e: IllegalArgumentException) {
+                defaultLang
+            }
+        }
+
         fun save(project: com.intellij.openapi.project.Project?, config: EtsConvertConfig) {
             val props = PropertiesComponent.getInstance()
             props.setValue(PREFIX + "rememberOptions", config.rememberOptions)
             if (config.rememberOptions) {
+                props.setValue(PREFIX + "targetLanguage", config.targetLanguage.name)
                 props.setValue(PREFIX + "generateAsClass", config.generateAsClass)
                 props.setValue(PREFIX + "useOptionalFields", config.useOptionalFields)
                 props.setValue(PREFIX + "useObservedV2", config.useObservedV2)
@@ -105,6 +129,11 @@ data class EtsConvertConfig(
                 props.setValue(PREFIX + "kotlinAutoImport", config.kotlinAutoImport)
                 props.setValue(PREFIX + "kotlinNullable", config.kotlinNullable)
                 props.setValue(PREFIX + "kotlinDefaultValues", config.kotlinDefaultValues)
+                props.setValue(PREFIX + "dartNullable", config.dartNullable)
+                props.setValue(PREFIX + "dartDefaultValues", config.dartDefaultValues)
+                props.setValue(PREFIX + "dartUseFinal", config.dartUseFinal)
+                props.setValue(PREFIX + "dartUseJsonSerializable", config.dartUseJsonSerializable)
+                props.setValue(PREFIX + "dartSimplifiedStyle", config.dartSimplifiedStyle)
                 props.setValue(PREFIX + "javaUseSerializedName", config.javaUseSerializedName)
                 props.setValue(PREFIX + "javaAutoImport", config.javaAutoImport)
                 props.setValue(PREFIX + "javaUseGetSet", config.javaUseGetSet)

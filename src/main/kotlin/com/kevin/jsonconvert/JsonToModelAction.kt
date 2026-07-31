@@ -24,6 +24,7 @@ class JsonToModelAction : AnAction() {
             "kt" -> ModelLanguage.KOTLIN
             "java" -> ModelLanguage.JAVA
             "ets", "ts" -> ModelLanguage.ARKTS
+            "dart" -> ModelLanguage.DART
             else -> ModelLanguage.ARKTS
         }
 
@@ -36,6 +37,7 @@ class JsonToModelAction : AnAction() {
                 ModelLanguage.ARKTS -> "ets"
                 ModelLanguage.KOTLIN -> "kt"
                 ModelLanguage.JAVA -> "java"
+                ModelLanguage.DART -> "dart"
             }
 
             if (config.fileNameMode == FileNameMode.CURRENT_FILE) {
@@ -53,6 +55,7 @@ class JsonToModelAction : AnAction() {
             ModelLanguage.ARKTS -> parseJsonToArkTS(config)
             ModelLanguage.KOTLIN -> parseJsonToKotlin(config)
             ModelLanguage.JAVA -> parseJsonToJava(config)
+            ModelLanguage.DART -> parseJsonToDart(config)
         }
     }
 
@@ -351,6 +354,337 @@ class JsonToModelAction : AnAction() {
                         sb.append("    public $typeName $key;\n")
                     }
                 }
+                sb.append("}\n\n")
+                nestedTasks.forEach { (subName, subEl) -> generateModel(subName, subEl) }
+            }
+
+            generateModel(config.modelName, rootElement)
+            return sb.toString()
+        } catch (e: Exception) {
+            return "// Parse Error: ${e.message}"
+        }
+    }
+
+    private data class DartField(
+        val key: String,
+        val typeName: String,
+        val defaultLiteral: String?,
+        val isObject: Boolean,
+        val isListOfObjects: Boolean,
+        val innerName: String?
+    )
+
+    private fun toSnakeCase(input: String): String {
+        return input.replace(Regex("([a-z0-9])([A-Z])"), "$1_$2").lowercase()
+    }
+
+    private fun primitiveDartType(p: com.google.gson.JsonPrimitive): String {
+        return when {
+            p.isBoolean -> "bool"
+            p.isNumber -> {
+                val numStr = p.asNumber.toString()
+                if (numStr.matches(Regex("^-?\\d+$"))) "int" else "double"
+            }
+            else -> "String"
+        }
+    }
+
+    private fun primitiveDartTypeWithDefault(p: com.google.gson.JsonPrimitive): Pair<String, String?> {
+        return when {
+            p.isBoolean -> "bool" to "false"
+            p.isNumber -> {
+                val numStr = p.asNumber.toString()
+                if (numStr.matches(Regex("^-?\\d+$"))) "int" to "0" else "double" to "0.0"
+            }
+            else -> "String" to "\"\""
+        }
+    }
+
+    private fun parseJsonToDart(config: EtsConvertConfig): String {
+        try {
+            val rootElement = JsonParser.parseString(config.jsonContent)
+            val sb = StringBuilder()
+            val generatedModelNames = mutableSetOf<String>()
+
+            // json_serializable 模式所需的 import / part 指令
+            if (config.dartUseJsonSerializable) {
+                sb.append("import 'package:json_annotation/json_annotation.dart';\n\n")
+                val partName = toSnakeCase(config.manualFileName.substringBefore(".")) + ".g.dart"
+                sb.append("part '$partName';\n\n")
+            }
+
+            fun getSafeModelName(baseName: String): String {
+                var candidate = baseName.replaceFirstChar { it.uppercase() } + "Model"
+                if (candidate == config.modelName && generatedModelNames.isNotEmpty()) {
+                    candidate = baseName.replaceFirstChar { it.uppercase() } + "InfoModel"
+                }
+                var finalName = candidate
+                var count = 1
+                while (generatedModelNames.contains(finalName)) {
+                    finalName = candidate.replace("Model", "") + "${count++}Model"
+                }
+                return finalName
+            }
+
+            fun generateModel(className: String, element: JsonElement) {
+                if (generatedModelNames.contains(className)) return
+                generatedModelNames.add(className)
+
+                val obj = when {
+                    element.isJsonObject -> element.asJsonObject
+                    element.isJsonArray && element.asJsonArray.size() > 0 && element.asJsonArray[0].isJsonObject ->
+                        element.asJsonArray[0].asJsonObject
+                    else -> null
+                } ?: return
+
+                if (config.dartUseJsonSerializable) {
+                    sb.append("@JsonSerializable(explicitToJson: true)\n")
+                }
+                sb.append("class $className {\n")
+
+                val nestedTasks = mutableListOf<Pair<String, JsonElement>>()
+                val fields = mutableListOf<DartField>()
+
+                obj.entrySet().forEach { entry ->
+                    val key = entry.key
+                    val value = entry.value
+
+                    var typeName = "dynamic"
+                    var defaultLiteral: String? = null
+                    var isObject = false
+                    var isListOfObjects = false
+                    var innerName: String? = null
+
+                    when {
+                        value.isJsonObject -> {
+                            typeName = getSafeModelName(key)
+                            isObject = true
+                            nestedTasks.add(typeName to value)
+                        }
+                        value.isJsonArray -> {
+                            val array = value.asJsonArray
+                            if (array.size() > 0 && array[0].isJsonObject) {
+                                innerName = getSafeModelName(key.replace("List", "") + "Item")
+                                typeName = "List<$innerName>"
+                                defaultLiteral = "const []"
+                                isListOfObjects = true
+                                nestedTasks.add(innerName to array[0])
+                            } else {
+                                val innerType = if (array.size() > 0 && array[0].isJsonPrimitive) {
+                                    primitiveDartType(array[0].asJsonPrimitive)
+                                } else "dynamic"
+                                typeName = "List<$innerType>"
+                                defaultLiteral = "const []"
+                            }
+                        }
+                        value.isJsonPrimitive -> {
+                            val (t, d) = primitiveDartTypeWithDefault(value.asJsonPrimitive)
+                            typeName = t
+                            defaultLiteral = d
+                        }
+                    }
+
+                    fields.add(DartField(key, typeName, defaultLiteral, isObject, isListOfObjects, innerName))
+                }
+
+                if (config.dartUseJsonSerializable) {
+                    // ===== json_serializable 模式：忽略其余自定义选项，按库官方类型生成，序列化交给 code-gen =====
+                    fields.forEach { f ->
+                        val t = if (f.typeName == "dynamic") "dynamic"
+                        else if (config.dartNullable) "${f.typeName}?" else f.typeName
+                        sb.append("  $t ${f.key};\n")
+                    }
+                    sb.append("\n")
+
+                    // 可空时字段带 ?，构造函数用可选命名参数（去掉 required，避免编译报错）
+                    sb.append("  $className({\n")
+                    if (config.dartNullable) {
+                        fields.forEach { f -> sb.append("    this.${f.key},\n") }
+                    } else {
+                        fields.forEach { f -> sb.append("    required this.${f.key},\n") }
+                    }
+                    sb.append("  });\n\n")
+
+                    sb.append("  factory $className.fromJson(Map<String, dynamic> json) => _\$${className}FromJson(json);\n")
+                    sb.append("  Map<String, dynamic> toJson() => _\$${className}ToJson(this);\n")
+                } else if (config.dartSimplifiedStyle) {
+                    // ===== 简化样式（自定义）：字段非 final、可选参数、直接赋值、不强制类型转换 =====
+                    // 字段声明：已知类型按可空选项加 ?；未知类型(dynamic，对应 JSON null) 不加 ?
+                    fields.forEach { f ->
+                        if (f.typeName == "dynamic") {
+                            sb.append("  dynamic ${f.key};\n")
+                        } else {
+                            val t = if (config.dartNullable) "${f.typeName}?" else f.typeName
+                            sb.append("  $t ${f.key};\n")
+                        }
+                    }
+                    sb.append("\n")
+
+                    // 普通构造方法（可选命名参数，无 required）；勾选 Default Values 时给字段默认值
+                    sb.append("  $className({\n")
+                    fields.forEach { f ->
+                        val defaultExpr = when {
+                            f.isObject -> "${f.typeName}()"
+                            f.defaultLiteral != null -> f.defaultLiteral
+                            else -> null
+                        }
+                        if (config.dartDefaultValues && defaultExpr != null) {
+                            sb.append("    this.${f.key} = $defaultExpr,\n")
+                        } else {
+                            sb.append("    this.${f.key},\n")
+                        }
+                    }
+                    sb.append("  });\n\n")
+
+                    // 简写版 fromJson（命名构造，不带强转；可空保持 null，非空按类型给默认值）
+                    sb.append("  $className.fromJson(Map<String, dynamic> json) {\n")
+                    fields.forEach { f ->
+                        val expr = when {
+                            f.isObject -> {
+                                if (config.dartNullable)
+                                    "json['${f.key}'] != null ? ${f.typeName}.fromJson(json['${f.key}']) : null"
+                                else
+                                    "${f.typeName}.fromJson(json['${f.key}'])"
+                            }
+                            f.isListOfObjects -> {
+                                val inner = f.innerName!!
+                                if (config.dartNullable)
+                                    "json['${f.key}'] != null ? json['${f.key}'].map((e) => $inner.fromJson(e)).toList() : null"
+                                else if (config.dartDefaultValues)
+                                    "json['${f.key}'] != null ? json['${f.key}'].map((e) => $inner.fromJson(e)).toList() : const []"
+                                else
+                                    "json['${f.key}'].map((e) => $inner.fromJson(e)).toList()"
+                            }
+                            else -> {
+                                if (config.dartNullable)
+                                    "json['${f.key}']"
+                                else if (config.dartDefaultValues && f.defaultLiteral != null)
+                                    "json['${f.key}'] ?? ${f.defaultLiteral}"
+                                else
+                                    "json['${f.key}']"
+                            }
+                        }
+                        sb.append("    ${f.key} = $expr;\n")
+                    }
+                    sb.append("  }\n\n")
+
+                    // 简写版 toJson（Map builder，去掉冗余 new 关键字）
+                    sb.append("  Map<String, dynamic> toJson() {\n")
+                    sb.append("    final Map<String, dynamic> data = <String, dynamic>{};\n")
+                    fields.forEach { f ->
+                        when {
+                            f.isObject -> {
+                                val nullableObj = config.dartNullable || f.typeName == "dynamic"
+                                if (nullableObj) sb.append("    data['${f.key}'] = this.${f.key}?.toJson();\n")
+                                else sb.append("    data['${f.key}'] = this.${f.key}.toJson();\n")
+                            }
+                            f.isListOfObjects ->
+                                sb.append("    data['${f.key}'] = this.${f.key}?.map((e) => e.toJson()).toList();\n")
+                            else ->
+                                sb.append("    data['${f.key}'] = this.${f.key};\n")
+                        }
+                    }
+                    sb.append("    return data;\n")
+                    sb.append("  }\n")
+                } else {
+                    // ===== 标准样式（自定义）：构造参数赋值，非空字段带 required；可空保持 null，非空按类型给默认值 =====
+
+                    // 字段声明
+                    fields.forEach { f ->
+                        val finalType = if (config.dartNullable) "${f.typeName}?" else f.typeName
+                        when {
+                            config.dartUseFinal -> sb.append("  final $finalType ${f.key};\n")
+                            else -> sb.append("  $finalType ${f.key};\n")
+                        }
+                    }
+                    sb.append("\n")
+
+                    // 构造函数
+                    sb.append("  $className({\n")
+                    fields.forEach { f ->
+                        when {
+                            // 可空字段：不带 required，也不强行给默认值（保持 null）
+                            config.dartNullable -> sb.append("    this.${f.key},\n")
+                            // 非空字段：有默认值则给默认值（非 required），否则 required
+                            else -> {
+                                if (config.dartDefaultValues && f.defaultLiteral != null)
+                                    sb.append("    this.${f.key} = ${f.defaultLiteral},\n")
+                                else
+                                    sb.append("    required this.${f.key},\n")
+                            }
+                        }
+                    }
+                    sb.append("  });\n\n")
+
+                    // 手写 fromJson（通过构造参数赋值）
+                    sb.append("  factory $className.fromJson(Map<String, dynamic> json) {\n")
+                    sb.append("    return $className(\n")
+                    fields.forEach { f ->
+                        when {
+                            f.isObject -> {
+                                if (config.dartNullable)
+                                    sb.append("      ${f.key}: json['${f.key}'] != null ? ${f.typeName}.fromJson(json['${f.key}'] as Map<String, dynamic>) : null,\n")
+                                else
+                                    sb.append("      ${f.key}: ${f.typeName}.fromJson(json['${f.key}'] as Map<String, dynamic>),\n")
+                            }
+                            f.isListOfObjects -> {
+                                val inner = f.innerName!!
+                                if (config.dartNullable)
+                                    sb.append("      ${f.key}: json['${f.key}'] != null ? (json['${f.key}'] as List<dynamic>).map((e) => $inner.fromJson(e as Map<String, dynamic>)).toList() : null,\n")
+                                else if (config.dartDefaultValues)
+                                    sb.append("      ${f.key}: (json['${f.key}'] as List<dynamic>? ?? const []).map((e) => $inner.fromJson(e as Map<String, dynamic>)).toList(),\n")
+                                else
+                                    sb.append("      ${f.key}: (json['${f.key}'] as List<dynamic>).map((e) => $inner.fromJson(e as Map<String, dynamic>)).toList(),\n")
+                            }
+                            else -> {
+                                val asExpr = when {
+                                    config.dartNullable -> "json['${f.key}'] as ${f.typeName}?"
+                                    config.dartDefaultValues && f.defaultLiteral != null -> "json['${f.key}'] as ${f.typeName}? ?? ${f.defaultLiteral}"
+                                    else -> "json['${f.key}'] as ${f.typeName}"
+                                }
+                                sb.append("      ${f.key}: $asExpr,\n")
+                            }
+                        }
+                    }
+                    sb.append("    );\n")
+                    sb.append("  }\n\n")
+
+                    // 手写 toJson
+                    sb.append("  Map<String, dynamic> toJson() {\n")
+                    sb.append("    return {\n")
+                    fields.forEach { f ->
+                        when {
+                            f.isObject -> {
+                                if (config.dartNullable)
+                                    sb.append("      '${f.key}': ${f.key}?.toJson(),\n")
+                                else
+                                    sb.append("      '${f.key}': ${f.key}.toJson(),\n")
+                            }
+                            f.isListOfObjects ->
+                                sb.append("      '${f.key}': ${f.key}.map((e) => e.toJson()).toList(),\n")
+                            else ->
+                                sb.append("      '${f.key}': ${f.key},\n")
+                        }
+                    }
+                    sb.append("    };\n")
+                    sb.append("  }\n")
+
+                    // 使用 final 时字段不可重新赋值，额外生成 copyWith 便于拷贝后局部修改
+                    if (config.dartUseFinal) {
+                        sb.append("\n")
+                        sb.append("  $className copyWith({\n")
+                        fields.forEach { f ->
+                            val paramType = if (f.typeName == "dynamic") "dynamic" else "${f.typeName}?"
+                            sb.append("    $paramType ${f.key},\n")
+                        }
+                        sb.append("  }) {\n")
+                        sb.append("    return $className(\n")
+                        fields.forEach { f -> sb.append("      ${f.key}: ${f.key} ?? this.${f.key},\n") }
+                        sb.append("    );\n")
+                        sb.append("  }\n")
+                    }
+                }
+
                 sb.append("}\n\n")
                 nestedTasks.forEach { (subName, subEl) -> generateModel(subName, subEl) }
             }

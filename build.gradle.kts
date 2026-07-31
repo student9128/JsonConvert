@@ -47,7 +47,7 @@ intellijPlatform {
         }
 
         changeNotes = """
-           This is a plugin for developers needing convert JSON string into ArkTS/Kotlin/Java model.
+           This is a plugin for developers needing convert JSON string into ArkTS/Kotlin/Java/Dart(Flutter) model.
            It can be used for all IntelliJPlatform.
           
            

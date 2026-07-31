@@ -12,7 +12,7 @@
 
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/best-practices-for-listing.html#plugin-description -->
-    <description>Convert JSON string into ArkTS/Kotlin/Java model.
+    <description>Convert JSON string into ArkTS/Kotlin/Java/Dart(Flutter) model(bean).
     </description>
 
     <!-- Product and plugin compatibility requirements.
@@ -29,7 +29,7 @@
                 id="com.kevin.jsonconvert.JsonToModelAction"
                 class="com.kevin.jsonconvert.JsonToModelAction"
                 text="JSONConvertToModel"
-                description="Convert JSON to ArkTS/Kotlin/Java Model">
+                description="Convert JSON to ArkTS/Kotlin/Java/Dart(Flutter) Model(Bean)">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="shift alt J"/>
