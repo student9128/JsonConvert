@@ -77,3 +77,4 @@
 - Kotlin 2.1
 - IDEA IC 2024.3
 - 版本：1.0.1
+- License：[Apache License 2.0](LICENSE)

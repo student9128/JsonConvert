@@ -79,3 +79,4 @@ The plugin is compatible with IntelliJ Platform `243+` (IDEA 2024.3), Android St
 - Kotlin 2.1
 - IDEA IC 2024.3 (also works on DevEco Studio)
 - Version: 1.0.2
+- License: [Apache License 2.0](LICENSE)
