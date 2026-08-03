@@ -67,7 +67,7 @@ The plugin is compatible with IntelliJ Platform `243+` (IDEA 2024.3), Android St
 
 ## Notes
 
-- For development / extension details, see [JsonConvert_开发指南.md](JsonConvert_开发指南.md) (Chinese).
+- For development / extension details, see [JsonConvert_development.md](JsonConvert_development.md) (Chinese).
 - Nested objects are extracted into sub-models; name collisions are resolved by appending an index.
 - On parse failure the result contains a `// Parse Error: ...` comment instead of crashing the IDE.
 
