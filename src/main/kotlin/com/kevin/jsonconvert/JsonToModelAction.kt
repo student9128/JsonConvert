@@ -109,6 +109,11 @@ class JsonToModelAction : AnAction() {
                     var defaultValue = "null"
 
                     when {
+                        value.isJsonNull -> {
+                            // 值为 null 时保留该字段，类型默认 ESObject
+                            typeName = "ESObject"
+                            defaultValue = "null"
+                        }
                         value.isJsonObject -> {
                             typeName = getSafeModelName(key)
                             defaultValue = "new $typeName()"

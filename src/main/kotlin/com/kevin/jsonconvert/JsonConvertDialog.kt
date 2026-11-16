@@ -255,7 +255,9 @@ class JsonConvertDialog(val project: Project?, defaultLang: ModelLanguage = Mode
         if (rawText.isBlank()) return false
         try {
             val element = JsonParser.parseString(rawText)
-            val gson = GsonBuilder().setPrettyPrinting().create()
+            // serializeNulls：保留值为 null 的字段，否则 Gson 默认会丢弃这些成员，
+            // 导致生成模型时缺失 null 字段（ArkTS 应生成 ESObject）
+            val gson = GsonBuilder().setPrettyPrinting().serializeNulls().create()
             jsonEditorField.text = gson.toJson(element)
             return true
         } catch (e: Exception) {
