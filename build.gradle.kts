@@ -18,7 +18,7 @@ val publishToken = localProperties.getProperty(
     "intellijPlatformPublishingToken"
 )
 group = "com.kevin"
-version = "1.0.2"
+version = "1.0.3"
 
 repositories {
     mavenCentral()
